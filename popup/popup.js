@@ -48,27 +48,35 @@ const storeStatus    = document.getElementById('store-status');
 
 async function initStoreSelect() {
   const customStores = await loadCustomStores();
+  const prevVal = storeSelect.value;
 
-  // 기본 매장 옵션
-  defaultOptgroup.innerHTML = '';
+  // select 전체 재구성 (optgroup에 동적 appendChild가 일부 환경에서 동작 안 함)
+  storeSelect.innerHTML = '<option value="">-- 매장을 선택하세요 --</option>';
+
+  const defaultGroup = document.createElement('optgroup');
+  defaultGroup.label = '기본 매장';
   STORES.forEach((store) => {
     const opt = document.createElement('option');
     opt.value = `default:${store.id}`;
     opt.textContent = `${store.name} (shopNo: ${store.shopNo}) — ${store.description}`;
-    defaultOptgroup.appendChild(opt);
+    defaultGroup.appendChild(opt);
   });
+  storeSelect.appendChild(defaultGroup);
 
-  // 커스텀 매장 옵션
-  customOptgroup.innerHTML = '';
-  customStores.forEach((store) => {
-    const opt = document.createElement('option');
-    opt.value = `custom:${store.id}`;
-    opt.textContent = `⭐ ${store.name} (${store.localPosId})`;
-    customOptgroup.appendChild(opt);
-  });
+  if (customStores.length > 0) {
+    const customGroup = document.createElement('optgroup');
+    customGroup.label = '내 매장';
+    customStores.forEach((store) => {
+      const opt = document.createElement('option');
+      opt.value = `custom:${store.id}`;
+      opt.textContent = `⭐ ${store.name} (${store.localPosId})`;
+      customGroup.appendChild(opt);
+    });
+    storeSelect.appendChild(customGroup);
+  }
 
-  // optgroup 숨김 처리 (항목 없으면)
-  customOptgroup.style.display = customStores.length === 0 ? 'none' : '';
+  // 이전 선택값 복원
+  if (prevVal) storeSelect.value = prevVal;
 }
 
 storeSelect.addEventListener('change', async () => {
@@ -511,11 +519,13 @@ function friendlyError(err) {
 }
 
 async function loadCustomStores() {
+  if (!chrome?.storage?.local) return [];
   return new Promise((resolve) =>
     chrome.storage.local.get('customStores', (d) => resolve(d.customStores ?? []))
   );
 }
 async function saveCustomStores(stores) {
+  if (!chrome?.storage?.local) return;
   return new Promise((resolve) => chrome.storage.local.set({ customStores: stores }, resolve));
 }
 
