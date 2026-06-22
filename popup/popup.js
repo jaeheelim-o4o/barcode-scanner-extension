@@ -193,18 +193,47 @@ function renderProducts(products) {
 
     const header = document.createElement('div');
     header.className = 'product-header';
-    header.innerHTML = `
-      <span class="product-chevron">▶</span>
-      <span class="product-name">${product.name || '(이름 없음)'}</span>
-      <span class="product-uid">${product.uid ? '#' + product.uid : ''}</span>
-      ${currentIsCustom ? `<button class="btn-delete-product" data-idx="${productIdx}">✕</button>` : ''}
-    `;
-    header.querySelector('.product-chevron')?.addEventListener('click', (e) => {
+
+    // 상품명 요소 (커스텀 매장이면 클릭 편집 가능)
+    const nameEl = document.createElement('span');
+    nameEl.className = 'product-name';
+    nameEl.textContent = product.name || '(이름 없음)';
+    if (currentIsCustom) {
+      nameEl.title = '클릭하여 이름 편집';
+      nameEl.style.cursor = 'text';
+      nameEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        startProductNameEdit(nameEl, productIdx);
+      });
+    }
+
+    const chevron = document.createElement('span');
+    chevron.className = 'product-chevron';
+    chevron.textContent = '▶';
+
+    const uidEl = document.createElement('span');
+    uidEl.className = 'product-uid';
+    uidEl.textContent = product.uid ? '#' + product.uid : '';
+
+    header.appendChild(chevron);
+    header.appendChild(nameEl);
+    header.appendChild(uidEl);
+
+    if (currentIsCustom) {
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn-delete-product';
+      delBtn.dataset.idx = productIdx;
+      delBtn.textContent = '✕';
+      header.appendChild(delBtn);
+    }
+
+    chevron.addEventListener('click', (e) => {
       e.stopPropagation();
       item.classList.toggle('open');
     });
     header.addEventListener('click', (e) => {
-      if (!e.target.classList.contains('btn-delete-product')) {
+      if (!e.target.classList.contains('btn-delete-product') &&
+          !e.target.classList.contains('product-name')) {
         item.classList.toggle('open');
       }
     });
@@ -232,6 +261,37 @@ function renderProducts(products) {
     item.appendChild(barcodeContainer);
     productItems.appendChild(item);
   });
+}
+
+// 상품명 인라인 편집
+function startProductNameEdit(nameEl, productIdx) {
+  const original = nameEl.textContent;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = original === '(이름 없음)' ? '' : original;
+  input.className = 'input input-sm product-name-input';
+  input.style.flex = '1';
+  nameEl.replaceWith(input);
+  input.focus();
+  input.select();
+
+  async function save() {
+    const newName = input.value.trim() || '(이름 없음)';
+    const customs = await loadCustomStores();
+    const storeIdx = customs.findIndex((s) => s.id === currentStore.id);
+    if (storeIdx !== -1) {
+      customs[storeIdx].products[productIdx].name = newName;
+      await saveCustomStores(customs);
+      currentStore = customs[storeIdx];
+    }
+    renderProducts(currentStore.products);
+  }
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); save(); }
+    if (e.key === 'Escape') { input.replaceWith(nameEl); }
+  });
+  input.addEventListener('blur', save);
 }
 
 function createBarcodeRow(barcode) {
