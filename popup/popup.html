@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Barcode Scanner</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <span class="header-icon">▦</span>
+      <span class="header-title">Barcode Scanner</span>
+    </header>
+
+    <main class="main">
+      <label for="barcode-input" class="label">바코드 붙여넣기</label>
+      <textarea
+        id="barcode-input"
+        class="input"
+        placeholder="바코드를 붙여넣으세요"
+        rows="2"
+        autofocus
+      ></textarea>
+
+      <div class="delay-row">
+        <label for="delay-slider" class="delay-label">딜레이</label>
+        <input
+          id="delay-slider"
+          type="range"
+          min="10"
+          max="200"
+          value="30"
+          step="10"
+          class="slider"
+        />
+        <span id="delay-value" class="delay-value">30ms</span>
+      </div>
+
+      <button id="scan-btn" class="btn-scan">스캔</button>
+
+      <div id="status" class="status hidden"></div>
+    </main>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

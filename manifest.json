@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Barcode Scanner (Self-POS)",
+  "version": "1.0.0",
+  "description": "셀포스 테스트용 바코드 키보드 입력 시뮬레이터",
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "바코드 입력"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
