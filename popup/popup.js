@@ -33,7 +33,7 @@ const storeStatus = document.getElementById('store-status');
 STORES.forEach((store) => {
   const opt = document.createElement('option');
   opt.value = store.id;
-  opt.textContent = `${store.name} — ${store.description}`;
+  opt.textContent = `${store.name} (shopNo: ${store.shopNo}) — ${store.description}`;
   storeSelect.appendChild(opt);
 });
 
@@ -295,6 +295,27 @@ async function triggerScan(barcode, btn, statusEl, delay, onSuccess) {
 async function sendToTab(message) {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) throw new Error('활성 탭을 찾을 수 없습니다.');
+
+  // localStorage 관련은 scripting.executeScript로 직접 실행 (content script 불필요)
+  if (message.type === 'SET_LOCAL_STORAGE') {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: (key, value) => { localStorage.setItem(key, value); return localStorage.getItem(key); },
+      args: [message.key, message.value],
+    });
+    return { success: true, value: results[0]?.result };
+  }
+
+  if (message.type === 'GET_LOCAL_STORAGE') {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: (key) => localStorage.getItem(key),
+      args: [message.key],
+    });
+    return { success: true, value: results[0]?.result };
+  }
+
+  // SCAN_BARCODE는 content script 메시지 방식 유지
   return chrome.tabs.sendMessage(tab.id, message);
 }
 
