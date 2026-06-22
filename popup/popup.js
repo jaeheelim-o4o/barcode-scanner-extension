@@ -174,38 +174,64 @@ const favEmpty = document.getElementById('fav-empty');
 const favStatus = document.getElementById('fav-status');
 
 addFavBtn.addEventListener('click', async () => {
-  // 현재 탭의 localStorage에서 local-pos-id 읽기
+  // 1순위: 현재 탭 localStorage의 local-pos-id
+  let detectedPosId = null;
   let targetStore = currentStore;
+
   try {
     const res = await sendToTab({ type: 'GET_LOCAL_STORAGE', key: 'local-pos-id' });
     if (res?.success && res.value) {
+      detectedPosId = res.value;
       const matched = STORES.find((s) => s.localPosId === res.value);
       if (matched) targetStore = matched;
     }
-  } catch (_) { /* content script 미응답 시 currentStore 사용 */ }
+  } catch (_) {}
 
-  if (!targetStore) {
+  // localStorage 값도 없고 매장 탭에서 선택한 매장도 없는 경우
+  if (!detectedPosId && !targetStore) {
     showStatus(favStatus, '설정된 local-pos-id가 없고 매장도 선택되지 않았습니다.', 'warning');
     return;
   }
+
   const favs = await loadFavorites();
-  const exists = favs.find((f) => f.storeId === targetStore.id);
-  if (exists) {
-    showStatus(favStatus, `이미 즐겨찾기에 있습니다: ${targetStore.name}`, 'warning');
-    return;
+
+  if (targetStore) {
+    // STORES에 있는 매장 — 상품 목록 포함
+    const exists = favs.find((f) => f.storeId === targetStore.id);
+    if (exists) {
+      showStatus(favStatus, `이미 즐겨찾기에 있습니다: ${targetStore.name}`, 'warning');
+      return;
+    }
+    favs.push({
+      id: `fav_${Date.now()}`,
+      storeId: targetStore.id,
+      label: targetStore.name,
+      localPosId: targetStore.localPosId,
+      barcodes: targetStore.products.flatMap((p) =>
+        p.barcodes.map((bc) => ({ name: p.name, barcode: bc }))
+      ),
+    });
+    await saveFavorites(favs);
+    renderFavorites();
+    showStatus(favStatus, `✅ 즐겨찾기 추가: ${targetStore.name} (${targetStore.localPosId})`, 'success');
+  } else {
+    // STORES에 없는 local-pos-id — ID만 저장 (local-pos-id 빠른 설정 용도)
+    const exists = favs.find((f) => f.localPosId === detectedPosId);
+    if (exists) {
+      showStatus(favStatus, `이미 즐겨찾기에 있습니다: ${detectedPosId}`, 'warning');
+      return;
+    }
+    favs.push({
+      id: `fav_${Date.now()}`,
+      storeId: null,
+      label: detectedPosId,
+      localPosId: detectedPosId,
+      barcodes: [],
+    });
+    await saveFavorites(favs);
+    renderFavorites();
+    showStatus(favStatus, `✅ 즐겨찾기 추가: ${detectedPosId}`, 'success');
   }
-  favs.push({
-    id: `fav_${Date.now()}`,
-    storeId: targetStore.id,
-    label: targetStore.name,
-    localPosId: targetStore.localPosId,
-    barcodes: targetStore.products.flatMap((p) =>
-      p.barcodes.map((bc) => ({ name: p.name, barcode: bc }))
-    ),
-  });
-  await saveFavorites(favs);
-  renderFavorites();
-  showStatus(favStatus, `✅ 즐겨찾기 추가 완료: ${targetStore.name}`, 'success');
 });
 
 async function renderFavorites() {
