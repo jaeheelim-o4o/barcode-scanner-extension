@@ -1,9 +1,14 @@
 /**
- * Barcode Scanner Extension — Popup Script v2
+ * Barcode Scanner Extension — Popup Script v3
+ *
+ * 데이터 소스:
+ *   STORES (data/stores.js) — 하드코딩된 기본 PROD 매장
+ *   chrome.storage.local.customStores — 사용자가 추가한 커스텀 매장
  */
 
 // ── 상태 ──────────────────────────────────────────────
-let currentStore = null;
+let currentStore = null;      // 현재 선택된 매장 객체 (STORES | customStore)
+let currentIsCustom = false;  // 커스텀 매장 여부
 
 // ── 탭 전환 ──────────────────────────────────────────
 document.querySelectorAll('.tab-btn').forEach((btn) => {
@@ -13,73 +18,156 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
     document.querySelectorAll('.tab-content').forEach((c) => c.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById(`tab-${tabId}`).classList.add('active');
-
-    if (tabId === 'fav') renderFavorites();
+    if (tabId === 'fav') renderFavTab();
   });
 });
 
-// ── 탭 1: 매장 선택 ──────────────────────────────────
+// ── 매장 드롭다운 ──────────────────────────────────────
 
-const storeSelect = document.getElementById('store-select');
-const posInfo = document.getElementById('pos-info');
-const posIdValue = document.getElementById('pos-id-value');
-const posStatus = document.getElementById('pos-status');
-const setPosBtn = document.getElementById('set-pos-btn');
-const productList = document.getElementById('product-list');
-const productItems = document.getElementById('product-items');
-const storeStatus = document.getElementById('store-status');
+const storeSelect    = document.getElementById('store-select');
+const defaultOptgroup = document.getElementById('default-optgroup');
+const customOptgroup  = document.getElementById('custom-optgroup');
+const customEditRow  = document.getElementById('custom-edit-row');
+const customNameInput = document.getElementById('custom-name-input');
+const customNameSave  = document.getElementById('custom-name-save');
+const customDeleteBtn = document.getElementById('custom-delete-btn');
+const posInfo        = document.getElementById('pos-info');
+const posIdValue     = document.getElementById('pos-id-value');
+const posStatus      = document.getElementById('pos-status');
+const setPosBtn      = document.getElementById('set-pos-btn');
+const productList    = document.getElementById('product-list');
+const productItems   = document.getElementById('product-items');
+const addBarcodeArea = document.getElementById('add-barcode-area');
+const showAddFormBtn = document.getElementById('show-add-form-btn');
+const addBarcodeForm = document.getElementById('add-barcode-form');
+const newProductName = document.getElementById('new-product-name');
+const newBarcode     = document.getElementById('new-barcode');
+const confirmAddBtn  = document.getElementById('confirm-add-btn');
+const cancelAddBtn   = document.getElementById('cancel-add-btn');
+const storeStatus    = document.getElementById('store-status');
 
-// 매장 드롭다운 초기화
-STORES.forEach((store) => {
-  const opt = document.createElement('option');
-  opt.value = store.id;
-  opt.textContent = `${store.name} (shopNo: ${store.shopNo}) — ${store.description}`;
-  storeSelect.appendChild(opt);
-});
+async function initStoreSelect() {
+  const customStores = await loadCustomStores();
 
-storeSelect.addEventListener('change', () => {
-  const storeId = storeSelect.value;
-  currentStore = STORES.find((s) => s.id === storeId) ?? null;
+  // 기본 매장 옵션
+  defaultOptgroup.innerHTML = '';
+  STORES.forEach((store) => {
+    const opt = document.createElement('option');
+    opt.value = `default:${store.id}`;
+    opt.textContent = `${store.name} (shopNo: ${store.shopNo}) — ${store.description}`;
+    defaultOptgroup.appendChild(opt);
+  });
 
+  // 커스텀 매장 옵션
+  customOptgroup.innerHTML = '';
+  customStores.forEach((store) => {
+    const opt = document.createElement('option');
+    opt.value = `custom:${store.id}`;
+    opt.textContent = `⭐ ${store.name} (${store.localPosId})`;
+    customOptgroup.appendChild(opt);
+  });
+
+  // optgroup 숨김 처리 (항목 없으면)
+  customOptgroup.style.display = customStores.length === 0 ? 'none' : '';
+}
+
+storeSelect.addEventListener('change', async () => {
+  const val = storeSelect.value;
+  currentStore = null;
+  currentIsCustom = false;
   clearStatus(storeStatus);
   posStatus.className = 'pos-status hidden';
+  customEditRow.classList.add('hidden');
+  addBarcodeArea.classList.add('hidden');
+  addBarcodeForm.classList.add('hidden');
 
-  if (!currentStore) {
+  if (!val) {
     posInfo.classList.add('hidden');
     productList.classList.add('hidden');
     return;
   }
 
+  if (val.startsWith('default:')) {
+    const storeId = val.replace('default:', '');
+    currentStore = STORES.find((s) => s.id === storeId);
+    currentIsCustom = false;
+  } else if (val.startsWith('custom:')) {
+    const storeId = val.replace('custom:', '');
+    const customs = await loadCustomStores();
+    currentStore = customs.find((s) => s.id === storeId);
+    currentIsCustom = true;
+    // 이름 편집 행 표시
+    customNameInput.value = currentStore.name;
+    customEditRow.classList.remove('hidden');
+  }
+
+  if (!currentStore) return;
+
   // local-pos-id 표시
   posIdValue.textContent = currentStore.localPosId;
   posInfo.classList.remove('hidden');
 
-  // 현재 설정값 조회하여 표시
-  sendToTab({ type: 'GET_LOCAL_STORAGE', key: 'local-pos-id' }).then((res) => {
+  // 현재 탭 설정값 조회
+  try {
+    const res = await sendToTab({ type: 'GET_LOCAL_STORAGE', key: 'local-pos-id' });
     if (res?.success && res.value) {
-      showPosStatus(`현재 설정값: ${res.value}`, res.value === currentStore.localPosId ? 'success' : 'warning');
+      const isSame = res.value === currentStore.localPosId;
+      showPosStatus(
+        isSame ? `✅ 현재 설정값 일치 (${res.value})` : `현재 설정값: ${res.value}`,
+        isSame ? 'success' : 'warning'
+      );
     }
-  });
+  } catch (_) {}
 
   // 상품 목록 렌더링
-  renderProducts(currentStore.products);
+  renderProducts(currentStore.products ?? []);
   productList.classList.remove('hidden');
+
+  // 커스텀 매장만 바코드 추가 버튼 표시
+  if (currentIsCustom) addBarcodeArea.classList.remove('hidden');
 });
 
-// local-pos-id 설정 버튼
+// 이름 저장
+customNameSave.addEventListener('click', async () => {
+  if (!currentStore || !currentIsCustom) return;
+  const newName = customNameInput.value.trim();
+  if (!newName) return;
+  const customs = await loadCustomStores();
+  const idx = customs.findIndex((s) => s.id === currentStore.id);
+  if (idx === -1) return;
+  customs[idx].name = newName;
+  await saveCustomStores(customs);
+  currentStore = customs[idx];
+  await initStoreSelect();
+  storeSelect.value = `custom:${currentStore.id}`;
+  showStatus(storeStatus, `✅ 이름 저장: ${newName}`, 'success');
+});
+
+// 커스텀 매장 삭제
+customDeleteBtn.addEventListener('click', async () => {
+  if (!currentStore || !currentIsCustom) return;
+  if (!confirm(`"${currentStore.name}" 매장을 삭제할까요?`)) return;
+  const customs = await loadCustomStores();
+  await saveCustomStores(customs.filter((s) => s.id !== currentStore.id));
+  currentStore = null;
+  currentIsCustom = false;
+  await initStoreSelect();
+  storeSelect.value = '';
+  posInfo.classList.add('hidden');
+  productList.classList.add('hidden');
+  customEditRow.classList.add('hidden');
+});
+
+// local-pos-id 설정
 setPosBtn.addEventListener('click', async () => {
   if (!currentStore) return;
   setPosBtn.disabled = true;
   try {
-    const res = await sendToTab({
-      type: 'SET_LOCAL_STORAGE',
-      key: 'local-pos-id',
-      value: currentStore.localPosId,
-    });
+    const res = await sendToTab({ type: 'SET_LOCAL_STORAGE', key: 'local-pos-id', value: currentStore.localPosId });
     if (res?.success) {
       showPosStatus(`✅ 설정 완료 (local-pos-id = ${currentStore.localPosId})`, 'success');
     } else {
-      showPosStatus(`❌ 설정 실패: ${res?.error ?? '알 수 없는 오류'}`, 'error');
+      showPosStatus(`❌ 설정 실패: ${res?.error ?? '오류'}`, 'error');
     }
   } catch (err) {
     showPosStatus(`❌ ${friendlyError(err)}`, 'error');
@@ -88,9 +176,10 @@ setPosBtn.addEventListener('click', async () => {
   }
 });
 
+// 상품 목록 렌더링
 function renderProducts(products) {
   productItems.innerHTML = '';
-  products.forEach((product) => {
+  products.forEach((product, productIdx) => {
     const item = document.createElement('div');
     item.className = 'product-item';
 
@@ -98,16 +187,37 @@ function renderProducts(products) {
     header.className = 'product-header';
     header.innerHTML = `
       <span class="product-chevron">▶</span>
-      <span class="product-name">${product.name}</span>
-      <span class="product-uid">#${product.uid}</span>
+      <span class="product-name">${product.name || '(이름 없음)'}</span>
+      <span class="product-uid">${product.uid ? '#' + product.uid : ''}</span>
+      ${currentIsCustom ? `<button class="btn-delete-product" data-idx="${productIdx}">✕</button>` : ''}
     `;
-    header.addEventListener('click', () => item.classList.toggle('open'));
+    header.querySelector('.product-chevron')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      item.classList.toggle('open');
+    });
+    header.addEventListener('click', (e) => {
+      if (!e.target.classList.contains('btn-delete-product')) {
+        item.classList.toggle('open');
+      }
+    });
+
+    // 커스텀 매장 상품 삭제
+    header.querySelector('.btn-delete-product')?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const idx = parseInt(e.target.dataset.idx);
+      const customs = await loadCustomStores();
+      const storeIdx = customs.findIndex((s) => s.id === currentStore.id);
+      if (storeIdx === -1) return;
+      customs[storeIdx].products.splice(idx, 1);
+      await saveCustomStores(customs);
+      currentStore = customs[storeIdx];
+      renderProducts(currentStore.products);
+    });
 
     const barcodeContainer = document.createElement('div');
     barcodeContainer.className = 'product-barcodes';
-    product.barcodes.forEach((bc) => {
-      const row = createBarcodeRow(bc);
-      barcodeContainer.appendChild(row);
+    (product.barcodes ?? []).forEach((bc) => {
+      barcodeContainer.appendChild(createBarcodeRow(bc));
     });
 
     item.appendChild(header);
@@ -119,20 +229,55 @@ function renderProducts(products) {
 function createBarcodeRow(barcode) {
   const row = document.createElement('div');
   row.className = 'barcode-row';
-
   const text = document.createElement('span');
   text.className = 'barcode-text';
   text.textContent = barcode;
-
   const btn = document.createElement('button');
   btn.className = 'btn-scan-barcode';
   btn.textContent = '입력';
   btn.addEventListener('click', () => triggerScan(barcode, btn, storeStatus));
-
   row.appendChild(text);
   row.appendChild(btn);
   return row;
 }
+
+// 바코드 추가 폼
+showAddFormBtn.addEventListener('click', () => {
+  addBarcodeForm.classList.remove('hidden');
+  showAddFormBtn.classList.add('hidden');
+  newBarcode.focus();
+});
+cancelAddBtn.addEventListener('click', () => {
+  addBarcodeForm.classList.add('hidden');
+  showAddFormBtn.classList.remove('hidden');
+  newProductName.value = '';
+  newBarcode.value = '';
+});
+confirmAddBtn.addEventListener('click', async () => {
+  const bc = newBarcode.value.trim();
+  if (!bc) { newBarcode.focus(); return; }
+  const name = newProductName.value.trim() || '(이름 없음)';
+
+  const customs = await loadCustomStores();
+  const storeIdx = customs.findIndex((s) => s.id === currentStore.id);
+  if (storeIdx === -1) return;
+
+  // 같은 상품명이 있으면 바코드만 추가, 없으면 새 상품
+  const existProduct = customs[storeIdx].products.find((p) => p.name === name);
+  if (existProduct) {
+    if (!existProduct.barcodes.includes(bc)) existProduct.barcodes.push(bc);
+  } else {
+    customs[storeIdx].products.push({ name, uid: '', barcodes: [bc] });
+  }
+  await saveCustomStores(customs);
+  currentStore = customs[storeIdx];
+
+  renderProducts(currentStore.products);
+  addBarcodeForm.classList.add('hidden');
+  showAddFormBtn.classList.remove('hidden');
+  newProductName.value = '';
+  newBarcode.value = '';
+});
 
 function showPosStatus(msg, type) {
   posStatus.textContent = msg;
@@ -142,42 +287,39 @@ function showPosStatus(msg, type) {
 // ── 탭 2: 직접 입력 ──────────────────────────────────
 
 const barcodeInput = document.getElementById('barcode-input');
-const delaySlider = document.getElementById('delay-slider');
-const delayValue = document.getElementById('delay-value');
-const scanBtn = document.getElementById('scan-btn');
-const scanStatus = document.getElementById('scan-status');
+const delaySlider  = document.getElementById('delay-slider');
+const delayValue   = document.getElementById('delay-value');
+const scanBtn      = document.getElementById('scan-btn');
+const scanStatus   = document.getElementById('scan-status');
 
 delaySlider.addEventListener('input', () => {
   delayValue.textContent = `${delaySlider.value}ms`;
 });
-
 barcodeInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
-    const barcode = barcodeInput.value.split('\n')[0].trim();
-    if (!barcode) { showStatus(scanStatus, '바코드를 입력해주세요.', 'warning'); return; }
-    triggerScan(barcode, scanBtn, scanStatus, parseInt(delaySlider.value), () => { barcodeInput.value = ''; });
+    const bc = barcodeInput.value.split('\n')[0].trim();
+    if (!bc) { showStatus(scanStatus, '바코드를 입력해주세요.', 'warning'); return; }
+    triggerScan(bc, scanBtn, scanStatus, parseInt(delaySlider.value), () => { barcodeInput.value = ''; });
   }
 });
-
 scanBtn.addEventListener('click', () => {
-  const barcode = barcodeInput.value.split('\n')[0].trim();
-  if (!barcode) { showStatus(scanStatus, '바코드를 입력해주세요.', 'warning'); return; }
-  triggerScan(barcode, scanBtn, scanStatus, parseInt(delaySlider.value), () => { barcodeInput.value = ''; });
+  const bc = barcodeInput.value.split('\n')[0].trim();
+  if (!bc) { showStatus(scanStatus, '바코드를 입력해주세요.', 'warning'); return; }
+  triggerScan(bc, scanBtn, scanStatus, parseInt(delaySlider.value), () => { barcodeInput.value = ''; });
 });
 
-// ── 탭 3: 즐겨찾기 ──────────────────────────────────
+// ── 탭 3: 내 매장 ──────────────────────────────────
 
 const addFavBtn = document.getElementById('add-fav-btn');
-const favList = document.getElementById('fav-list');
-const favEmpty = document.getElementById('fav-empty');
+const favList   = document.getElementById('fav-list');
+const favEmpty  = document.getElementById('fav-empty');
 const favStatus = document.getElementById('fav-status');
 
 addFavBtn.addEventListener('click', async () => {
   clearStatus(favStatus);
   addFavBtn.disabled = true;
   try {
-    // 1순위: 현재 탭 localStorage의 local-pos-id
     let detectedPosId = null;
     let targetStore = currentStore;
 
@@ -188,50 +330,51 @@ addFavBtn.addEventListener('click', async () => {
       if (matched) targetStore = matched;
     }
 
-    // localStorage 값도 없고 매장 탭에서 선택한 매장도 없는 경우
     if (!detectedPosId && !targetStore) {
       showStatus(favStatus, '설정된 local-pos-id가 없고 매장도 선택되지 않았습니다.', 'warning');
       return;
     }
 
-    const favs = await loadFavorites();
+    const customs = await loadCustomStores();
 
-    if (targetStore) {
-      // STORES에 있는 매장 — 상품 목록 포함
-      const exists = favs.find((f) => f.storeId === targetStore.id);
+    if (targetStore && !targetStore.isCustom) {
+      // STORES에 있는 기본 매장 — 이미 드롭다운에 있으므로 커스텀으로 복사
+      const exists = customs.find((s) => s.localPosId === targetStore.localPosId);
       if (exists) {
-        showStatus(favStatus, `이미 즐겨찾기에 있습니다: ${targetStore.name}`, 'warning');
+        showStatus(favStatus, `이미 내 매장에 있습니다: ${targetStore.name}`, 'warning');
         return;
       }
-      favs.push({
-        id: `fav_${Date.now()}`,
-        storeId: targetStore.id,
-        label: targetStore.name,
+      customs.push({
+        id: `custom_${Date.now()}`,
+        isCustom: true,
+        name: targetStore.name,
+        description: targetStore.description ?? '',
         localPosId: targetStore.localPosId,
-        barcodes: targetStore.products.flatMap((p) =>
-          p.barcodes.map((bc) => ({ name: p.name, barcode: bc }))
-        ),
+        products: targetStore.products.map((p) => ({ ...p, barcodes: [...p.barcodes] })),
       });
-      await saveFavorites(favs);
-      await renderFavorites();
-      showStatus(favStatus, `✅ 즐겨찾기 추가: ${targetStore.name} (${targetStore.localPosId})`, 'success');
-    } else {
-      // STORES에 없는 local-pos-id — ID만 저장 (local-pos-id 빠른 설정 용도)
-      const exists = favs.find((f) => f.localPosId === detectedPosId);
+      await saveCustomStores(customs);
+      await initStoreSelect();
+      await renderFavTab();
+      showStatus(favStatus, `✅ 내 매장 추가: ${targetStore.name} (${targetStore.localPosId})`, 'success');
+    } else if (detectedPosId) {
+      // 알 수 없는 local-pos-id → 이름만 저장
+      const exists = customs.find((s) => s.localPosId === detectedPosId);
       if (exists) {
-        showStatus(favStatus, `이미 즐겨찾기에 있습니다: ${detectedPosId}`, 'warning');
+        showStatus(favStatus, `이미 내 매장에 있습니다: ${detectedPosId}`, 'warning');
         return;
       }
-      favs.push({
-        id: `fav_${Date.now()}`,
-        storeId: null,
-        label: detectedPosId,
+      customs.push({
+        id: `custom_${Date.now()}`,
+        isCustom: true,
+        name: detectedPosId,
+        description: '',
         localPosId: detectedPosId,
-        barcodes: [],
+        products: [],
       });
-      await saveFavorites(favs);
-      await renderFavorites();
-      showStatus(favStatus, `✅ 즐겨찾기 추가: ${detectedPosId}`, 'success');
+      await saveCustomStores(customs);
+      await initStoreSelect();
+      await renderFavTab();
+      showStatus(favStatus, `✅ 내 매장 추가: ${detectedPosId}`, 'success');
     }
   } catch (err) {
     showStatus(favStatus, `❌ ${friendlyError(err)}`, 'error');
@@ -240,59 +383,65 @@ addFavBtn.addEventListener('click', async () => {
   }
 });
 
-async function renderFavorites() {
-  const favs = await loadFavorites();
+async function renderFavTab() {
+  const customs = await loadCustomStores();
   favList.innerHTML = '';
-  if (favs.length === 0) {
+  if (customs.length === 0) {
     favEmpty.classList.remove('hidden');
     return;
   }
   favEmpty.classList.add('hidden');
-  favs.forEach((fav) => {
+
+  customs.forEach((store) => {
     const card = document.createElement('div');
     card.className = 'fav-card';
 
+    const allBarcodes = (store.products ?? []).flatMap((p) =>
+      (p.barcodes ?? []).map((bc) => ({ name: p.name, barcode: bc }))
+    );
+
     card.innerHTML = `
       <div class="fav-card-header">
-        <span class="fav-name">${fav.label}</span>
-        <span class="fav-pos-id">${fav.localPosId}</span>
-        <button class="btn-sm btn-primary set-pos-fav" data-pos="${fav.localPosId}">설정</button>
-        <button class="btn-delete-fav" data-id="${fav.id}">✕</button>
+        <span class="fav-name">${store.name}</span>
+        <span class="fav-pos-id">${store.localPosId}</span>
+        <button class="btn-sm btn-primary btn-set-pos-fav" data-pos="${store.localPosId}">설정</button>
+        <button class="btn-delete-fav" data-id="${store.id}">✕</button>
       </div>
       <div class="fav-barcodes"></div>
     `;
 
     const barcodesEl = card.querySelector('.fav-barcodes');
-    fav.barcodes.forEach(({ name, barcode }) => {
-      const row = document.createElement('div');
-      row.className = 'barcode-row';
-      row.innerHTML = `
-        <span class="barcode-text" title="${name}">${barcode}</span>
-      `;
-      const btn = document.createElement('button');
-      btn.className = 'btn-scan-barcode';
-      btn.textContent = '입력';
-      btn.addEventListener('click', () => triggerScan(barcode, btn, favStatus));
-      row.appendChild(btn);
-      barcodesEl.appendChild(row);
-    });
+    if (allBarcodes.length === 0) {
+      barcodesEl.innerHTML = '<span class="fav-no-barcode">바코드 없음 — 매장 탭에서 추가하세요</span>';
+    } else {
+      allBarcodes.forEach(({ name, barcode }) => {
+        const row = document.createElement('div');
+        row.className = 'barcode-row';
+        row.innerHTML = `<span class="barcode-text" title="${name}">${barcode}</span>`;
+        const btn = document.createElement('button');
+        btn.className = 'btn-scan-barcode';
+        btn.textContent = '입력';
+        btn.addEventListener('click', () => triggerScan(barcode, btn, favStatus));
+        row.appendChild(btn);
+        barcodesEl.appendChild(row);
+      });
+    }
 
-    // local-pos-id 설정
-    card.querySelector('.set-pos-fav').addEventListener('click', async (e) => {
+    card.querySelector('.btn-set-pos-fav').addEventListener('click', async (e) => {
       const posId = e.target.dataset.pos;
       try {
-        const res = await sendToTab({ type: 'SET_LOCAL_STORAGE', key: 'local-pos-id', value: posId });
-        if (res?.success) showStatus(favStatus, `✅ local-pos-id = ${posId} 설정 완료`, 'success');
-        else showStatus(favStatus, `❌ 설정 실패`, 'error');
+        const r = await sendToTab({ type: 'SET_LOCAL_STORAGE', key: 'local-pos-id', value: posId });
+        if (r?.success) showStatus(favStatus, `✅ local-pos-id = ${posId} 설정 완료`, 'success');
+        else showStatus(favStatus, '❌ 설정 실패', 'error');
       } catch (err) { showStatus(favStatus, `❌ ${friendlyError(err)}`, 'error'); }
     });
 
-    // 삭제
     card.querySelector('.btn-delete-fav').addEventListener('click', async (e) => {
       const id = e.target.dataset.id;
-      const updated = (await loadFavorites()).filter((f) => f.id !== id);
-      await saveFavorites(updated);
-      renderFavorites();
+      const updated = (await loadCustomStores()).filter((s) => s.id !== id);
+      await saveCustomStores(updated);
+      await initStoreSelect();
+      renderFavTab();
     });
 
     favList.appendChild(card);
@@ -328,7 +477,6 @@ async function sendToTab(message) {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) throw new Error('활성 탭을 찾을 수 없습니다.');
 
-  // localStorage 관련은 scripting.executeScript로 직접 실행 (content script 불필요)
   if (message.type === 'SET_LOCAL_STORAGE') {
     const results = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
@@ -337,7 +485,6 @@ async function sendToTab(message) {
     });
     return { success: true, value: results[0]?.result };
   }
-
   if (message.type === 'GET_LOCAL_STORAGE') {
     const results = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
@@ -346,8 +493,6 @@ async function sendToTab(message) {
     });
     return { success: true, value: results[0]?.result };
   }
-
-  // SCAN_BARCODE는 content script 메시지 방식 유지
   return chrome.tabs.sendMessage(tab.id, message);
 }
 
@@ -365,11 +510,14 @@ function friendlyError(err) {
     : err.message ?? '알 수 없는 오류';
 }
 
-async function loadFavorites() {
-  return new Promise((resolve) => {
-    chrome.storage.local.get('favorites', (data) => resolve(data.favorites ?? []));
-  });
+async function loadCustomStores() {
+  return new Promise((resolve) =>
+    chrome.storage.local.get('customStores', (d) => resolve(d.customStores ?? []))
+  );
 }
-async function saveFavorites(favs) {
-  return new Promise((resolve) => chrome.storage.local.set({ favorites: favs }, resolve));
+async function saveCustomStores(stores) {
+  return new Promise((resolve) => chrome.storage.local.set({ customStores: stores }, resolve));
 }
+
+// ── 초기화 ──────────────────────────────────────────
+initStoreSelect();

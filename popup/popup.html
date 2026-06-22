@@ -8,27 +8,33 @@
 <body>
   <div class="container">
 
-    <!-- 헤더 -->
     <header class="header">
       <span class="header-icon">▦</span>
       <span class="header-title">Barcode Scanner</span>
     </header>
 
-    <!-- 탭 네비게이션 -->
     <nav class="tab-nav">
       <button class="tab-btn active" data-tab="store">🏪 매장</button>
       <button class="tab-btn" data-tab="scan">⌨ 직접 입력</button>
-      <button class="tab-btn" data-tab="fav">⭐ 즐겨찾기</button>
+      <button class="tab-btn" data-tab="fav">⭐ 내 매장</button>
     </nav>
 
     <!-- ── 탭 1: 매장 선택 ── -->
     <section id="tab-store" class="tab-content active">
-
       <div class="field-row">
         <label class="label" for="store-select">매장 선택</label>
         <select id="store-select" class="select">
           <option value="">-- 매장을 선택하세요 --</option>
+          <optgroup label="기본 매장" id="default-optgroup"></optgroup>
+          <optgroup label="내 매장" id="custom-optgroup"></optgroup>
         </select>
+      </div>
+
+      <!-- 커스텀 매장 이름 편집 영역 -->
+      <div id="custom-edit-row" class="custom-edit-row hidden">
+        <input id="custom-name-input" class="input input-sm" type="text" placeholder="매장 이름" />
+        <button id="custom-name-save" class="btn-sm btn-primary">저장</button>
+        <button id="custom-delete-btn" class="btn-sm btn-danger">삭제</button>
       </div>
 
       <div id="pos-info" class="pos-info hidden">
@@ -43,6 +49,18 @@
       <div id="product-list" class="product-list hidden">
         <div class="section-title">테스트 상품 목록</div>
         <div id="product-items"></div>
+        <!-- 커스텀 매장 전용: 바코드 추가 -->
+        <div id="add-barcode-area" class="add-barcode-area hidden">
+          <button id="show-add-form-btn" class="btn-add-barcode">+ 바코드 추가</button>
+          <div id="add-barcode-form" class="add-barcode-form hidden">
+            <input id="new-product-name" class="input input-sm" type="text" placeholder="상품명 (선택)" />
+            <input id="new-barcode" class="input input-sm" type="text" placeholder="바코드 *" />
+            <div class="form-actions">
+              <button id="confirm-add-btn" class="btn-sm btn-primary">추가</button>
+              <button id="cancel-add-btn" class="btn-sm btn-ghost">취소</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div id="store-status" class="status hidden"></div>
@@ -50,31 +68,22 @@
 
     <!-- ── 탭 2: 직접 입력 ── -->
     <section id="tab-scan" class="tab-content">
-
       <label class="label" for="barcode-input">바코드 붙여넣기</label>
-      <textarea
-        id="barcode-input"
-        class="input"
-        placeholder="바코드를 붙여넣으세요"
-        rows="2"
-      ></textarea>
-
+      <textarea id="barcode-input" class="input" placeholder="바코드를 붙여넣으세요" rows="2"></textarea>
       <div class="delay-row">
         <label class="delay-label" for="delay-slider">딜레이</label>
         <input id="delay-slider" type="range" min="10" max="200" value="30" step="10" class="slider" />
         <span id="delay-value" class="delay-value">30ms</span>
       </div>
-
       <button id="scan-btn" class="btn-scan">스캔</button>
       <div id="scan-status" class="status hidden"></div>
     </section>
 
-    <!-- ── 탭 3: 즐겨찾기 ── -->
+    <!-- ── 탭 3: 내 매장 ── -->
     <section id="tab-fav" class="tab-content">
-
       <button id="add-fav-btn" class="btn-add-fav">+ 현재 매장 즐겨찾기 추가</button>
       <div id="fav-list" class="fav-list"></div>
-      <div id="fav-empty" class="fav-empty hidden">즐겨찾기가 없습니다.</div>
+      <div id="fav-empty" class="fav-empty hidden">추가된 매장이 없습니다.</div>
       <div id="fav-status" class="status hidden"></div>
     </section>
 
