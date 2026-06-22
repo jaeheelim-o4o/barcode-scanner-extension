@@ -1,11 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Barcode Scanner (Self-POS)",
-  "version": "1.0.0",
-  "description": "셀포스 테스트용 바코드 키보드 입력 시뮬레이터",
+  "version": "2.0.0",
+  "description": "셀포스 테스트용 바코드 스캐너 — 매장 선택, localStorage 설정, 즐겨찾기",
   "permissions": [
     "activeTab",
-    "scripting"
+    "scripting",
+    "storage"
   ],
   "action": {
     "default_popup": "popup/popup.html",

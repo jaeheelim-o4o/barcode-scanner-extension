@@ -1,67 +1,65 @@
 /**
- * Barcode Scanner Extension — Content Script
+ * Barcode Scanner Extension — Content Script v2
  *
- * 팝업에서 바코드를 받아 실제 키보드 이벤트로 dispatch합니다.
- * Playwright keyboard.type과 동일하게:
- *   각 문자 → keydown → keypress → keyup (30ms 간격)
- *   마지막 → Enter keydown/keypress/keyup
+ * 지원 메시지:
+ *   SCAN_BARCODE      — 키보드 이벤트 dispatch (각 문자 keydown→keypress→keyup + Enter)
+ *   SET_LOCAL_STORAGE — localStorage.setItem(key, value)
+ *   GET_LOCAL_STORAGE — localStorage.getItem(key) 반환
  */
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.type !== 'SCAN_BARCODE') return;
+  switch (message.type) {
+    case 'SCAN_BARCODE':
+      typeBarcode(message.barcode, message.delay ?? 30)
+        .then(() => sendResponse({ success: true }))
+        .catch((err) => sendResponse({ success: false, error: err.message }));
+      return true; // 비동기 응답
 
-  const { barcode, delay } = message;
-  typeBarcode(barcode, delay)
-    .then(() => sendResponse({ success: true }))
-    .catch((err) => sendResponse({ success: false, error: err.message }));
+    case 'SET_LOCAL_STORAGE':
+      try {
+        localStorage.setItem(message.key, message.value);
+        sendResponse({ success: true, value: message.value });
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+      break;
 
-  // 비동기 응답을 위해 true 반환
-  return true;
+    case 'GET_LOCAL_STORAGE':
+      try {
+        const val = localStorage.getItem(message.key);
+        sendResponse({ success: true, value: val });
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+      break;
+  }
 });
 
-/**
- * 바코드 문자열을 키보드 이벤트로 순서대로 dispatch
- */
 async function typeBarcode(barcode, delay = 30) {
   const target = document.activeElement || document.body;
-
   for (const char of barcode) {
     dispatchKeyEvents(target, char);
     await sleep(delay);
   }
-
-  // Enter 키
   await sleep(delay);
   dispatchKeyEvents(target, 'Enter');
 }
 
-/**
- * 단일 문자에 대해 keydown → keypress → keyup 이벤트 순서대로 dispatch
- */
 function dispatchKeyEvents(target, char) {
   const isEnter = char === 'Enter';
   const key = isEnter ? 'Enter' : char;
   const code = isEnter ? 'Enter' : (char.length === 1 ? `Key${char.toUpperCase()}` : char);
   const keyCode = isEnter ? 13 : char.charCodeAt(0);
 
-  const eventInit = {
-    key,
-    code,
-    keyCode,
-    which: keyCode,
+  const init = {
+    key, code, keyCode, which: keyCode,
     charCode: isEnter ? 13 : keyCode,
-    bubbles: true,
-    cancelable: true,
-    composed: true,
+    bubbles: true, cancelable: true, composed: true,
   };
 
-  target.dispatchEvent(new KeyboardEvent('keydown', eventInit));
-  if (!isEnter) {
-    target.dispatchEvent(new KeyboardEvent('keypress', { ...eventInit, charCode: keyCode }));
-  } else {
-    target.dispatchEvent(new KeyboardEvent('keypress', { ...eventInit, charCode: 13 }));
-  }
-  target.dispatchEvent(new KeyboardEvent('keyup', eventInit));
+  target.dispatchEvent(new KeyboardEvent('keydown', init));
+  target.dispatchEvent(new KeyboardEvent('keypress', { ...init, charCode: isEnter ? 13 : keyCode }));
+  target.dispatchEvent(new KeyboardEvent('keyup', init));
 }
 
 function sleep(ms) {

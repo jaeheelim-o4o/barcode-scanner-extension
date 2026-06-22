@@ -1,95 +1,312 @@
 /**
- * Barcode Scanner Extension — Popup Script
- *
- * 사용자 입력 처리 → content script에 SCAN_BARCODE 메시지 전송
+ * Barcode Scanner Extension — Popup Script v2
  */
+
+// ── 상태 ──────────────────────────────────────────────
+let currentStore = null;
+
+// ── 탭 전환 ──────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const tabId = btn.dataset.tab;
+    document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach((c) => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(`tab-${tabId}`).classList.add('active');
+
+    if (tabId === 'fav') renderFavorites();
+  });
+});
+
+// ── 탭 1: 매장 선택 ──────────────────────────────────
+
+const storeSelect = document.getElementById('store-select');
+const posInfo = document.getElementById('pos-info');
+const posIdValue = document.getElementById('pos-id-value');
+const posStatus = document.getElementById('pos-status');
+const setPosBtn = document.getElementById('set-pos-btn');
+const productList = document.getElementById('product-list');
+const productItems = document.getElementById('product-items');
+const storeStatus = document.getElementById('store-status');
+
+// 매장 드롭다운 초기화
+STORES.forEach((store) => {
+  const opt = document.createElement('option');
+  opt.value = store.id;
+  opt.textContent = `${store.name} — ${store.description}`;
+  storeSelect.appendChild(opt);
+});
+
+storeSelect.addEventListener('change', () => {
+  const storeId = storeSelect.value;
+  currentStore = STORES.find((s) => s.id === storeId) ?? null;
+
+  clearStatus(storeStatus);
+  posStatus.className = 'pos-status hidden';
+
+  if (!currentStore) {
+    posInfo.classList.add('hidden');
+    productList.classList.add('hidden');
+    return;
+  }
+
+  // local-pos-id 표시
+  posIdValue.textContent = currentStore.localPosId;
+  posInfo.classList.remove('hidden');
+
+  // 현재 설정값 조회하여 표시
+  sendToTab({ type: 'GET_LOCAL_STORAGE', key: 'local-pos-id' }).then((res) => {
+    if (res?.success && res.value) {
+      showPosStatus(`현재 설정값: ${res.value}`, res.value === currentStore.localPosId ? 'success' : 'warning');
+    }
+  });
+
+  // 상품 목록 렌더링
+  renderProducts(currentStore.products);
+  productList.classList.remove('hidden');
+});
+
+// local-pos-id 설정 버튼
+setPosBtn.addEventListener('click', async () => {
+  if (!currentStore) return;
+  setPosBtn.disabled = true;
+  try {
+    const res = await sendToTab({
+      type: 'SET_LOCAL_STORAGE',
+      key: 'local-pos-id',
+      value: currentStore.localPosId,
+    });
+    if (res?.success) {
+      showPosStatus(`✅ 설정 완료 (local-pos-id = ${currentStore.localPosId})`, 'success');
+    } else {
+      showPosStatus(`❌ 설정 실패: ${res?.error ?? '알 수 없는 오류'}`, 'error');
+    }
+  } catch (err) {
+    showPosStatus(`❌ ${friendlyError(err)}`, 'error');
+  } finally {
+    setPosBtn.disabled = false;
+  }
+});
+
+function renderProducts(products) {
+  productItems.innerHTML = '';
+  products.forEach((product) => {
+    const item = document.createElement('div');
+    item.className = 'product-item';
+
+    const header = document.createElement('div');
+    header.className = 'product-header';
+    header.innerHTML = `
+      <span class="product-chevron">▶</span>
+      <span class="product-name">${product.name}</span>
+      <span class="product-uid">#${product.uid}</span>
+    `;
+    header.addEventListener('click', () => item.classList.toggle('open'));
+
+    const barcodeContainer = document.createElement('div');
+    barcodeContainer.className = 'product-barcodes';
+    product.barcodes.forEach((bc) => {
+      const row = createBarcodeRow(bc);
+      barcodeContainer.appendChild(row);
+    });
+
+    item.appendChild(header);
+    item.appendChild(barcodeContainer);
+    productItems.appendChild(item);
+  });
+}
+
+function createBarcodeRow(barcode) {
+  const row = document.createElement('div');
+  row.className = 'barcode-row';
+
+  const text = document.createElement('span');
+  text.className = 'barcode-text';
+  text.textContent = barcode;
+
+  const btn = document.createElement('button');
+  btn.className = 'btn-scan-barcode';
+  btn.textContent = '입력';
+  btn.addEventListener('click', () => triggerScan(barcode, btn, storeStatus));
+
+  row.appendChild(text);
+  row.appendChild(btn);
+  return row;
+}
+
+function showPosStatus(msg, type) {
+  posStatus.textContent = msg;
+  posStatus.className = `pos-status ${type}`;
+}
+
+// ── 탭 2: 직접 입력 ──────────────────────────────────
 
 const barcodeInput = document.getElementById('barcode-input');
 const delaySlider = document.getElementById('delay-slider');
 const delayValue = document.getElementById('delay-value');
 const scanBtn = document.getElementById('scan-btn');
-const statusEl = document.getElementById('status');
+const scanStatus = document.getElementById('scan-status');
 
-// 딜레이 슬라이더 표시 업데이트
 delaySlider.addEventListener('input', () => {
   delayValue.textContent = `${delaySlider.value}ms`;
 });
 
-// textarea에서 Enter 키 → 스캔 실행 (Shift+Enter는 줄바꿈)
 barcodeInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
-    triggerScan();
+    const barcode = barcodeInput.value.split('\n')[0].trim();
+    if (!barcode) { showStatus(scanStatus, '바코드를 입력해주세요.', 'warning'); return; }
+    triggerScan(barcode, scanBtn, scanStatus, parseInt(delaySlider.value), () => { barcodeInput.value = ''; });
   }
 });
 
-// 스캔 버튼 클릭
 scanBtn.addEventListener('click', () => {
-  triggerScan();
+  const barcode = barcodeInput.value.split('\n')[0].trim();
+  if (!barcode) { showStatus(scanStatus, '바코드를 입력해주세요.', 'warning'); return; }
+  triggerScan(barcode, scanBtn, scanStatus, parseInt(delaySlider.value), () => { barcodeInput.value = ''; });
 });
 
-async function triggerScan() {
-  const rawValue = barcodeInput.value;
-  // 첫 번째 줄만 사용 (여러 줄 붙여넣기 방어)
-  const barcode = rawValue.split('\n')[0].trim();
+// ── 탭 3: 즐겨찾기 ──────────────────────────────────
 
-  if (!barcode) {
-    showStatus('바코드를 입력해주세요.', 'warning');
+const addFavBtn = document.getElementById('add-fav-btn');
+const favList = document.getElementById('fav-list');
+const favEmpty = document.getElementById('fav-empty');
+const favStatus = document.getElementById('fav-status');
+
+addFavBtn.addEventListener('click', async () => {
+  if (!currentStore) {
+    showStatus(favStatus, '매장 탭에서 매장을 먼저 선택해주세요.', 'warning');
     return;
   }
+  const favs = await loadFavorites();
+  const exists = favs.find((f) => f.storeId === currentStore.id);
+  if (exists) {
+    showStatus(favStatus, '이미 즐겨찾기에 있는 매장입니다.', 'warning');
+    return;
+  }
+  favs.push({
+    id: `fav_${Date.now()}`,
+    storeId: currentStore.id,
+    label: currentStore.name,
+    localPosId: currentStore.localPosId,
+    barcodes: currentStore.products.flatMap((p) =>
+      p.barcodes.map((bc) => ({ name: p.name, barcode: bc }))
+    ),
+  });
+  await saveFavorites(favs);
+  renderFavorites();
+  showStatus(favStatus, `✅ 즐겨찾기 추가 완료: ${currentStore.name}`, 'success');
+});
 
-  setLoading(true);
-  clearStatus();
+async function renderFavorites() {
+  const favs = await loadFavorites();
+  favList.innerHTML = '';
+  if (favs.length === 0) {
+    favEmpty.classList.remove('hidden');
+    return;
+  }
+  favEmpty.classList.add('hidden');
+  favs.forEach((fav) => {
+    const card = document.createElement('div');
+    card.className = 'fav-card';
 
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    card.innerHTML = `
+      <div class="fav-card-header">
+        <span class="fav-name">${fav.label}</span>
+        <span class="fav-pos-id">${fav.localPosId}</span>
+        <button class="btn-sm btn-primary set-pos-fav" data-pos="${fav.localPosId}">설정</button>
+        <button class="btn-delete-fav" data-id="${fav.id}">✕</button>
+      </div>
+      <div class="fav-barcodes"></div>
+    `;
 
-    if (!tab?.id) {
-      showStatus('❌ 활성 탭을 찾을 수 없습니다.', 'error');
-      return;
-    }
-
-    const delay = parseInt(delaySlider.value, 10);
-
-    const response = await chrome.tabs.sendMessage(tab.id, {
-      type: 'SCAN_BARCODE',
-      barcode,
-      delay,
+    const barcodesEl = card.querySelector('.fav-barcodes');
+    fav.barcodes.forEach(({ name, barcode }) => {
+      const row = document.createElement('div');
+      row.className = 'barcode-row';
+      row.innerHTML = `
+        <span class="barcode-text" title="${name}">${barcode}</span>
+      `;
+      const btn = document.createElement('button');
+      btn.className = 'btn-scan-barcode';
+      btn.textContent = '입력';
+      btn.addEventListener('click', () => triggerScan(barcode, btn, favStatus));
+      row.appendChild(btn);
+      barcodesEl.appendChild(row);
     });
 
-    if (response?.success) {
-      showStatus(`✅ 스캔 완료! (${barcode})`, 'success');
-      barcodeInput.value = '';
-      // 1.5초 후 상태 초기화
-      setTimeout(() => {
-        clearStatus();
-        barcodeInput.focus();
-      }, 1500);
+    // local-pos-id 설정
+    card.querySelector('.set-pos-fav').addEventListener('click', async (e) => {
+      const posId = e.target.dataset.pos;
+      try {
+        const res = await sendToTab({ type: 'SET_LOCAL_STORAGE', key: 'local-pos-id', value: posId });
+        if (res?.success) showStatus(favStatus, `✅ local-pos-id = ${posId} 설정 완료`, 'success');
+        else showStatus(favStatus, `❌ 설정 실패`, 'error');
+      } catch (err) { showStatus(favStatus, `❌ ${friendlyError(err)}`, 'error'); }
+    });
+
+    // 삭제
+    card.querySelector('.btn-delete-fav').addEventListener('click', async (e) => {
+      const id = e.target.dataset.id;
+      const updated = (await loadFavorites()).filter((f) => f.id !== id);
+      await saveFavorites(updated);
+      renderFavorites();
+    });
+
+    favList.appendChild(card);
+  });
+}
+
+// ── 공통 유틸 ──────────────────────────────────────
+
+async function triggerScan(barcode, btn, statusEl, delay, onSuccess) {
+  const d = delay ?? parseInt(delaySlider.value);
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '…';
+  clearStatus(statusEl);
+  try {
+    const res = await sendToTab({ type: 'SCAN_BARCODE', barcode, delay: d });
+    if (res?.success) {
+      showStatus(statusEl, `✅ 스캔: ${barcode}`, 'success');
+      onSuccess?.();
+      setTimeout(() => clearStatus(statusEl), 2000);
     } else {
-      showStatus(`❌ 실패: ${response?.error ?? '알 수 없는 오류'}`, 'error');
+      showStatus(statusEl, `❌ 실패: ${res?.error ?? '오류'}`, 'error');
     }
   } catch (err) {
-    // content script가 아직 로드되지 않은 경우 등
-    const msg = err.message?.includes('Could not establish connection')
-      ? '페이지를 새로고침 후 다시 시도해주세요.'
-      : err.message ?? '알 수 없는 오류';
-    showStatus(`❌ ${msg}`, 'error');
+    showStatus(statusEl, `❌ ${friendlyError(err)}`, 'error');
   } finally {
-    setLoading(false);
+    btn.disabled = false;
+    btn.textContent = origText;
   }
 }
 
-function showStatus(message, type) {
-  statusEl.textContent = message;
-  statusEl.className = `status ${type}`;
+async function sendToTab(message) {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id) throw new Error('활성 탭을 찾을 수 없습니다.');
+  return chrome.tabs.sendMessage(tab.id, message);
 }
 
-function clearStatus() {
-  statusEl.textContent = '';
-  statusEl.className = 'status hidden';
+function showStatus(el, msg, type) {
+  el.textContent = msg;
+  el.className = `status ${type}`;
+}
+function clearStatus(el) {
+  el.textContent = '';
+  el.className = 'status hidden';
+}
+function friendlyError(err) {
+  return err.message?.includes('Could not establish connection')
+    ? '페이지를 새로고침 후 다시 시도해주세요.'
+    : err.message ?? '알 수 없는 오류';
 }
 
-function setLoading(isLoading) {
-  scanBtn.disabled = isLoading;
-  scanBtn.textContent = isLoading ? '전송 중...' : '스캔';
+async function loadFavorites() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get('favorites', (data) => resolve(data.favorites ?? []));
+  });
+}
+async function saveFavorites(favs) {
+  return new Promise((resolve) => chrome.storage.local.set({ favorites: favs }, resolve));
 }

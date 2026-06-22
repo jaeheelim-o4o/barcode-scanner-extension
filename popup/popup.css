@@ -1,176 +1,180 @@
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  width: 320px;
+  width: 380px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 14px;
+  font-size: 13px;
   color: #1a1a1a;
-  background: #ffffff;
+  background: #fff;
 }
 
-.container {
-  display: flex;
-  flex-direction: column;
-}
-
-/* Header */
+/* ── 헤더 ── */
 .header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 14px 16px 12px;
+  padding: 12px 14px 10px;
   border-bottom: 1px solid #e8e8e8;
   background: #fafafa;
 }
+.header-icon { font-size: 16px; color: #2563eb; }
+.header-title { font-size: 14px; font-weight: 700; }
 
-.header-icon {
-  font-size: 18px;
-  color: #2563eb;
-}
-
-.header-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: #111;
-}
-
-/* Main */
-.main {
+/* ── 탭 ── */
+.tab-nav {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+  border-bottom: 1px solid #e8e8e8;
 }
-
-.label {
+.tab-btn {
+  flex: 1;
+  padding: 8px 4px;
+  border: none;
+  background: none;
   font-size: 12px;
   font-weight: 500;
-  color: #555;
+  color: #888;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
 }
+.tab-btn:hover { color: #2563eb; }
+.tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; }
 
-.input {
+/* ── 탭 콘텐츠 ── */
+.tab-content { display: none; padding: 14px; }
+.tab-content.active { display: flex; flex-direction: column; gap: 10px; }
+
+/* ── 공통 폼 ── */
+.label { font-size: 11px; font-weight: 600; color: #555; margin-bottom: 2px; display: block; }
+.select, .input {
   width: 100%;
-  padding: 10px 12px;
+  padding: 8px 10px;
   border: 1.5px solid #d1d5db;
-  border-radius: 8px;
-  font-size: 14px;
-  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
-  resize: none;
-  transition: border-color 0.15s;
+  border-radius: 7px;
+  font-size: 13px;
   outline: none;
-  line-height: 1.5;
+  transition: border-color 0.15s;
 }
-
-.input:focus {
+.select:focus, .input:focus {
   border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
 }
+.input { font-family: 'Menlo','Monaco','Courier New',monospace; resize: none; }
 
-/* Delay row */
-.delay-row {
+/* ── local-pos-id 행 ── */
+.pos-info { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 10px 12px; }
+.pos-row { display: flex; align-items: center; gap: 8px; }
+.pos-label { font-size: 11px; color: #0369a1; font-weight: 600; white-space: nowrap; }
+.pos-value { flex: 1; font-size: 14px; font-weight: 700; color: #0c4a6e; font-family: monospace; }
+.pos-status { margin-top: 6px; font-size: 11px; }
+.pos-status.success { color: #15803d; }
+.pos-status.error { color: #dc2626; }
+
+/* ── 상품 목록 ── */
+.section-title { font-size: 11px; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: 0.05em; }
+.product-list { display: flex; flex-direction: column; gap: 6px; }
+.product-item { border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+.product-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-}
-
-.delay-label {
-  font-size: 12px;
-  color: #555;
-  white-space: nowrap;
-  min-width: 32px;
-}
-
-.slider {
-  flex: 1;
-  -webkit-appearance: none;
-  height: 4px;
-  background: #d1d5db;
-  border-radius: 2px;
-  outline: none;
+  gap: 6px;
+  padding: 8px 10px;
   cursor: pointer;
+  background: #f9fafb;
+  user-select: none;
 }
-
-.slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 16px;
-  height: 16px;
-  background: #2563eb;
-  border-radius: 50%;
-  cursor: pointer;
-  transition: background 0.15s;
+.product-header:hover { background: #f0f9ff; }
+.product-chevron { font-size: 10px; color: #888; transition: transform 0.2s; }
+.product-item.open .product-chevron { transform: rotate(90deg); }
+.product-name { flex: 1; font-size: 12px; font-weight: 600; color: #111; }
+.product-uid { font-size: 10px; color: #888; font-family: monospace; }
+.product-barcodes { display: none; padding: 6px 10px 8px; border-top: 1px solid #e5e7eb; gap: 4px; flex-direction: column; }
+.product-item.open .product-barcodes { display: flex; }
+.barcode-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 5px;
+  background: #f9fafb;
 }
-
-.slider::-webkit-slider-thumb:hover {
-  background: #1d4ed8;
-}
-
-.delay-value {
-  font-size: 12px;
-  color: #555;
-  min-width: 36px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Scan button */
-.btn-scan {
-  width: 100%;
-  padding: 11px;
+.barcode-row:hover { background: #eff6ff; }
+.barcode-text { flex: 1; font-size: 12px; font-family: monospace; color: #111; word-break: break-all; }
+.btn-scan-barcode {
+  flex-shrink: 0;
+  padding: 3px 8px;
   background: #2563eb;
   color: #fff;
   border: none;
-  border-radius: 8px;
-  font-size: 14px;
+  border-radius: 5px;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, transform 0.1s;
 }
+.btn-scan-barcode:hover { background: #1d4ed8; }
+.btn-scan-barcode:active { transform: scale(0.96); }
 
-.btn-scan:hover {
-  background: #1d4ed8;
-}
+/* ── 딜레이 슬라이더 ── */
+.delay-row { display: flex; align-items: center; gap: 8px; }
+.delay-label { font-size: 11px; color: #555; white-space: nowrap; }
+.slider { flex: 1; -webkit-appearance: none; height: 4px; background: #d1d5db; border-radius: 2px; outline: none; cursor: pointer; }
+.slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: #2563eb; border-radius: 50%; cursor: pointer; }
+.delay-value { font-size: 11px; color: #555; min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
 
-.btn-scan:active {
-  transform: scale(0.98);
+/* ── 스캔 버튼 ── */
+.btn-scan {
+  width: 100%; padding: 10px;
+  background: #2563eb; color: #fff;
+  border: none; border-radius: 8px;
+  font-size: 13px; font-weight: 700; cursor: pointer;
+  transition: background 0.15s;
 }
+.btn-scan:hover { background: #1d4ed8; }
+.btn-scan:disabled { background: #93c5fd; cursor: not-allowed; }
 
-.btn-scan:disabled {
-  background: #93c5fd;
-  cursor: not-allowed;
-  transform: none;
+/* ── 버튼 공통 ── */
+.btn-sm {
+  padding: 4px 10px; border-radius: 6px;
+  font-size: 11px; font-weight: 600; cursor: pointer; border: none;
+  transition: background 0.15s;
 }
+.btn-primary { background: #2563eb; color: #fff; }
+.btn-primary:hover { background: #1d4ed8; }
 
-/* Status message */
-.status {
-  padding: 10px 12px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  text-align: center;
+/* ── 즐겨찾기 ── */
+.btn-add-fav {
+  width: 100%; padding: 9px;
+  background: #f0fdf4; color: #15803d;
+  border: 1.5px dashed #86efac; border-radius: 8px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: background 0.15s;
 }
+.btn-add-fav:hover { background: #dcfce7; }
+.fav-list { display: flex; flex-direction: column; gap: 8px; }
+.fav-card { border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+.fav-card-header {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 10px; background: #fffbeb;
+  border-bottom: 1px solid #e5e7eb;
+}
+.fav-name { flex: 1; font-size: 12px; font-weight: 700; color: #92400e; }
+.fav-pos-id { font-size: 11px; color: #b45309; font-family: monospace; }
+.btn-delete-fav {
+  padding: 2px 6px; font-size: 11px;
+  border: none; background: none; color: #dc2626; cursor: pointer;
+  border-radius: 4px;
+}
+.btn-delete-fav:hover { background: #fef2f2; }
+.fav-barcodes { padding: 6px 10px 8px; display: flex; flex-direction: column; gap: 4px; }
+.fav-empty { text-align: center; color: #888; font-size: 12px; padding: 16px; }
 
-.status.hidden {
-  display: none;
-}
+/* ── 상태 메시지 ── */
+.status { padding: 8px 10px; border-radius: 7px; font-size: 12px; font-weight: 500; text-align: center; }
+.status.hidden { display: none; }
+.status.success { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+.status.error   { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+.status.warning { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
 
-.status.success {
-  background: #f0fdf4;
-  color: #15803d;
-  border: 1px solid #bbf7d0;
-}
-
-.status.error {
-  background: #fef2f2;
-  color: #dc2626;
-  border: 1px solid #fecaca;
-}
-
-.status.warning {
-  background: #fffbeb;
-  color: #b45309;
-  border: 1px solid #fde68a;
-}
+/* ── 유틸 ── */
+.hidden { display: none !important; }
+.field-row { display: flex; flex-direction: column; gap: 4px; }

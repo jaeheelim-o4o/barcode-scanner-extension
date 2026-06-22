@@ -2,47 +2,85 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Barcode Scanner</title>
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
   <div class="container">
+
+    <!-- 헤더 -->
     <header class="header">
       <span class="header-icon">▦</span>
       <span class="header-title">Barcode Scanner</span>
     </header>
 
-    <main class="main">
-      <label for="barcode-input" class="label">바코드 붙여넣기</label>
+    <!-- 탭 네비게이션 -->
+    <nav class="tab-nav">
+      <button class="tab-btn active" data-tab="store">🏪 매장</button>
+      <button class="tab-btn" data-tab="scan">⌨ 직접 입력</button>
+      <button class="tab-btn" data-tab="fav">⭐ 즐겨찾기</button>
+    </nav>
+
+    <!-- ── 탭 1: 매장 선택 ── -->
+    <section id="tab-store" class="tab-content active">
+
+      <div class="field-row">
+        <label class="label" for="store-select">매장 선택</label>
+        <select id="store-select" class="select">
+          <option value="">-- 매장을 선택하세요 --</option>
+        </select>
+      </div>
+
+      <div id="pos-info" class="pos-info hidden">
+        <div class="pos-row">
+          <span class="pos-label">local-pos-id</span>
+          <span id="pos-id-value" class="pos-value"></span>
+          <button id="set-pos-btn" class="btn-sm btn-primary">설정하기</button>
+        </div>
+        <div id="pos-status" class="pos-status hidden"></div>
+      </div>
+
+      <div id="product-list" class="product-list hidden">
+        <div class="section-title">테스트 상품 목록</div>
+        <div id="product-items"></div>
+      </div>
+
+      <div id="store-status" class="status hidden"></div>
+    </section>
+
+    <!-- ── 탭 2: 직접 입력 ── -->
+    <section id="tab-scan" class="tab-content">
+
+      <label class="label" for="barcode-input">바코드 붙여넣기</label>
       <textarea
         id="barcode-input"
         class="input"
         placeholder="바코드를 붙여넣으세요"
         rows="2"
-        autofocus
       ></textarea>
 
       <div class="delay-row">
-        <label for="delay-slider" class="delay-label">딜레이</label>
-        <input
-          id="delay-slider"
-          type="range"
-          min="10"
-          max="200"
-          value="30"
-          step="10"
-          class="slider"
-        />
+        <label class="delay-label" for="delay-slider">딜레이</label>
+        <input id="delay-slider" type="range" min="10" max="200" value="30" step="10" class="slider" />
         <span id="delay-value" class="delay-value">30ms</span>
       </div>
 
       <button id="scan-btn" class="btn-scan">스캔</button>
+      <div id="scan-status" class="status hidden"></div>
+    </section>
 
-      <div id="status" class="status hidden"></div>
-    </main>
+    <!-- ── 탭 3: 즐겨찾기 ── -->
+    <section id="tab-fav" class="tab-content">
+
+      <button id="add-fav-btn" class="btn-add-fav">+ 현재 매장 즐겨찾기 추가</button>
+      <div id="fav-list" class="fav-list"></div>
+      <div id="fav-empty" class="fav-empty hidden">즐겨찾기가 없습니다.</div>
+      <div id="fav-status" class="status hidden"></div>
+    </section>
+
   </div>
 
+  <script src="../data/stores.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
