@@ -174,28 +174,38 @@ const favEmpty = document.getElementById('fav-empty');
 const favStatus = document.getElementById('fav-status');
 
 addFavBtn.addEventListener('click', async () => {
-  if (!currentStore) {
-    showStatus(favStatus, '매장 탭에서 매장을 먼저 선택해주세요.', 'warning');
+  // 현재 탭의 localStorage에서 local-pos-id 읽기
+  let targetStore = currentStore;
+  try {
+    const res = await sendToTab({ type: 'GET_LOCAL_STORAGE', key: 'local-pos-id' });
+    if (res?.success && res.value) {
+      const matched = STORES.find((s) => s.localPosId === res.value);
+      if (matched) targetStore = matched;
+    }
+  } catch (_) { /* content script 미응답 시 currentStore 사용 */ }
+
+  if (!targetStore) {
+    showStatus(favStatus, '설정된 local-pos-id가 없고 매장도 선택되지 않았습니다.', 'warning');
     return;
   }
   const favs = await loadFavorites();
-  const exists = favs.find((f) => f.storeId === currentStore.id);
+  const exists = favs.find((f) => f.storeId === targetStore.id);
   if (exists) {
-    showStatus(favStatus, '이미 즐겨찾기에 있는 매장입니다.', 'warning');
+    showStatus(favStatus, `이미 즐겨찾기에 있습니다: ${targetStore.name}`, 'warning');
     return;
   }
   favs.push({
     id: `fav_${Date.now()}`,
-    storeId: currentStore.id,
-    label: currentStore.name,
-    localPosId: currentStore.localPosId,
-    barcodes: currentStore.products.flatMap((p) =>
+    storeId: targetStore.id,
+    label: targetStore.name,
+    localPosId: targetStore.localPosId,
+    barcodes: targetStore.products.flatMap((p) =>
       p.barcodes.map((bc) => ({ name: p.name, barcode: bc }))
     ),
   });
   await saveFavorites(favs);
   renderFavorites();
-  showStatus(favStatus, `✅ 즐겨찾기 추가 완료: ${currentStore.name}`, 'success');
+  showStatus(favStatus, `✅ 즐겨찾기 추가 완료: ${targetStore.name}`, 'success');
 });
 
 async function renderFavorites() {
