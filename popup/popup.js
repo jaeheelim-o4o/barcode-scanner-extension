@@ -113,6 +113,16 @@ storeSelect.addEventListener('change', async () => {
 
   // local-pos-id 표시
   posIdValue.textContent = currentStore.localPosId;
+  // 커스텀 매장만 pos-id 클릭 편집 가능
+  if (currentIsCustom) {
+    posIdValue.style.cursor = 'text';
+    posIdValue.title = '클릭하여 편집';
+    posIdValue.onclick = startPosIdEdit;
+  } else {
+    posIdValue.style.cursor = 'default';
+    posIdValue.title = '';
+    posIdValue.onclick = null;
+  }
   posInfo.classList.remove('hidden');
 
   // 현재 탭 설정값 조회
@@ -347,6 +357,73 @@ confirmAddBtn.addEventListener('click', async () => {
   newBarcode.value = '';
 });
 
+// local-pos-id 인라인 편집 (커스텀 매장 전용)
+function startPosIdEdit() {
+  const original = currentStore.localPosId;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = original;
+  input.className = 'input input-sm';
+  input.style.cssText = 'flex:1; min-width:60px; max-width:100px;';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.textContent = '저장';
+  saveBtn.className = 'btn-sm btn-primary';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = '취소';
+  cancelBtn.className = 'btn-sm btn-ghost';
+
+  setPosBtn.classList.add('hidden');
+  posIdValue.replaceWith(input);
+  const posRow = posInfo.querySelector('.pos-row');
+  posRow.appendChild(saveBtn);
+  posRow.appendChild(cancelBtn);
+  input.focus();
+  input.select();
+
+  function cancel() {
+    input.replaceWith(posIdValue);
+    saveBtn.remove();
+    cancelBtn.remove();
+    setPosBtn.classList.remove('hidden');
+  }
+
+  async function save() {
+    const newPosId = input.value.trim();
+    if (!newPosId) { cancel(); return; }
+
+    const customs = await loadCustomStores();
+    const idx = customs.findIndex((s) => s.id === currentStore.id);
+    if (idx !== -1) {
+      customs[idx].localPosId = newPosId;
+      await saveCustomStores(customs);
+      currentStore = customs[idx];
+    }
+
+    try {
+      await sendToTab({ type: 'SET_LOCAL_STORAGE', key: 'local-pos-id', value: newPosId });
+    } catch (_) {}
+
+    await initStoreSelect();
+    storeSelect.value = `custom:${currentStore.id}`;
+
+    input.replaceWith(posIdValue);
+    posIdValue.textContent = newPosId;
+    saveBtn.remove();
+    cancelBtn.remove();
+    setPosBtn.classList.remove('hidden');
+    showPosStatus(`✅ pos-id 변경 완료 (${newPosId})`, 'success');
+  }
+
+  saveBtn.addEventListener('click', save);
+  cancelBtn.addEventListener('click', cancel);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); save(); }
+    if (e.key === 'Escape') cancel();
+  });
+}
+
 function showPosStatus(msg, type) {
   posStatus.textContent = msg;
   posStatus.className = `pos-status ${type}`;
@@ -453,6 +530,14 @@ addFavBtn.addEventListener('click', async () => {
 
 async function renderFavTab() {
   const customs = await loadCustomStores();
+
+  // 현재 설정된 local-pos-id 조회
+  let currentPosId = null;
+  try {
+    const res = await sendToTab({ type: 'GET_LOCAL_STORAGE', key: 'local-pos-id' });
+    if (res?.success) currentPosId = res.value;
+  } catch (_) {}
+
   favList.innerHTML = '';
   if (customs.length === 0) {
     favEmpty.classList.remove('hidden');
@@ -461,24 +546,26 @@ async function renderFavTab() {
   favEmpty.classList.add('hidden');
 
   customs.forEach((store) => {
+    const isActive = store.localPosId === currentPosId;
     const card = document.createElement('div');
-    card.className = 'fav-card';
+    card.className = isActive ? 'fav-card active' : 'fav-card';
 
     const allBarcodes = (store.products ?? []).flatMap((p) =>
       (p.barcodes ?? []).map((bc) => ({ name: p.name, barcode: bc }))
     );
 
-    card.innerHTML = `
-      <div class="fav-card-header">
-        <span class="fav-name">${store.name}</span>
-        <span class="fav-pos-id">${store.localPosId}</span>
-        <button class="btn-sm btn-primary btn-set-pos-fav" data-pos="${store.localPosId}">설정</button>
-        <button class="btn-delete-fav" data-id="${store.id}">✕</button>
-      </div>
-      <div class="fav-barcodes"></div>
+    const headerEl = document.createElement('div');
+    headerEl.className = 'fav-card-header';
+    headerEl.innerHTML = `
+      <span class="fav-name">${store.name}</span>
+      <span class="fav-pos-id">${store.localPosId}</span>
+      ${isActive ? '<span class="fav-active-badge">현재 설정 중</span>' : `<button class="btn-sm btn-primary btn-set-pos-fav" data-pos="${store.localPosId}">설정</button>`}
+      <button class="btn-delete-fav" data-id="${store.id}">✕</button>
     `;
+    card.appendChild(headerEl);
 
-    const barcodesEl = card.querySelector('.fav-barcodes');
+    const barcodesEl = document.createElement('div');
+    barcodesEl.className = 'fav-barcodes';
     if (allBarcodes.length === 0) {
       barcodesEl.innerHTML = '<span class="fav-no-barcode">바코드 없음 — 매장 탭에서 추가하세요</span>';
     } else {
@@ -494,17 +581,22 @@ async function renderFavTab() {
         barcodesEl.appendChild(row);
       });
     }
+    card.appendChild(barcodesEl);
 
-    card.querySelector('.btn-set-pos-fav').addEventListener('click', async (e) => {
+    headerEl.querySelector('.btn-set-pos-fav')?.addEventListener('click', async (e) => {
       const posId = e.target.dataset.pos;
       try {
         const r = await sendToTab({ type: 'SET_LOCAL_STORAGE', key: 'local-pos-id', value: posId });
-        if (r?.success) showStatus(favStatus, `✅ local-pos-id = ${posId} 설정 완료`, 'success');
-        else showStatus(favStatus, '❌ 설정 실패', 'error');
+        if (r?.success) {
+          showStatus(favStatus, `✅ local-pos-id = ${posId} 설정 완료`, 'success');
+          renderFavTab(); // 하이라이트 즉시 갱신
+        } else {
+          showStatus(favStatus, '❌ 설정 실패', 'error');
+        }
       } catch (err) { showStatus(favStatus, `❌ ${friendlyError(err)}`, 'error'); }
     });
 
-    card.querySelector('.btn-delete-fav').addEventListener('click', async (e) => {
+    headerEl.querySelector('.btn-delete-fav').addEventListener('click', async (e) => {
       const id = e.target.dataset.id;
       const updated = (await loadCustomStores()).filter((s) => s.id !== id);
       await saveCustomStores(updated);
